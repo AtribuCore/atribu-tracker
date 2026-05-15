@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.1 (2026-05-15)
+
+### Features
+
+- `setUserId(userId)` — attach a stable user ID to every future event. Complementary to `identify()` (which resolves identity via PII through the server-side identity graph). Was declared in the public `AtribuClient` type but missing from the live wrapper; now wired through to the underlying runtime.
+
+### Docs
+
+- README now documents `setUserId` under "User Identification" with the use-case split (PII identity resolution vs. stable user_id stamping).
+
+### Internal
+
+- First release published through GitHub Actions OIDC trusted publishing — provenance attestations now ship with every release.
+
 ## 0.1.0 (2025-03-18)
 
 ### Features

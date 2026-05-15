@@ -100,18 +100,28 @@ trackRevenue("purchase", 99.99, "USD", { plan: "enterprise" });
 
 ## User Identification
 
-Link a visitor to a known user for cross-device attribution:
+Link a visitor to a known user for cross-device attribution. Two complementary APIs:
 
 ```typescript
-import { identify } from "@atribu/tracker";
+import { identify, setUserId } from "@atribu/tracker";
 
+// Identify with PII for server-side identity resolution (joins this visitor
+// to your customer_profile via the identity graph):
 identify({
   email: "user@example.com",
   firstName: "Jane",
   lastName: "Doe",
   phone: "+1234567890",
 });
+
+// Attach a stable user_id to every future event (e.g. on login):
+setUserId("user_abc123");
+
+// Clear it on logout:
+setUserId(null);
 ```
+
+`setUserId` is the simpler one — it just stamps your application's user ID on every event from this point forward. `identify` does the heavier work of resolving the visitor to a customer profile via the identity graph (anonymous_id ↔ email ↔ phone).
 
 ## Consent Management
 
