@@ -1,6 +1,14 @@
 # Changelog
 
+## 0.1.3 (2026-05-15)
+
+### Internal
+
+- Workflow upgrades npm to latest before publishing so OIDC trusted publishing works for scoped packages (Node 20's default npm is too old for that path).
+
 ## 0.1.2 (2026-05-15)
+
+> Note: tag pushed but workflow couldn't publish — npm 10.x (Node 20 default) doesn't support OIDC scoped publishing. Fixed in 0.1.3.
 
 ### Internal
 
