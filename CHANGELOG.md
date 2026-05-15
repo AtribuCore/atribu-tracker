@@ -1,6 +1,15 @@
 # Changelog
 
+## 0.1.2 (2026-05-15)
+
+### Internal
+
+- First release to land via OIDC trusted publishing (provenance attestation now signs every release).
+- Mirror script now vendors the tracker runtime into `src/runtime/` inside the public mirror and rewrites runtime imports, so the standalone repo is buildable by `tsup` without monorepo context.
+
 ## 0.1.1 (2026-05-15)
+
+> Note: tag pushed but workflow failed (standalone build couldn't resolve `../../src/*` imports). Fixed in 0.1.2.
 
 ### Features
 

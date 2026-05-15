@@ -12,13 +12,13 @@ import type {
 } from "./types";
 
 // Import tracker runtime (bundled by tsup into this package)
-import { initRuntime } from "../../src/runtime.js";
+import { initRuntime } from "./runtime/runtime.js";
 import {
   flushOutboxNow,
   resetOutbox,
-} from "../../src/networking.js";
-import { storage } from "../../src/storage.js";
-import { resetAnonymousId, resetSessionState } from "../../src/session.js";
+} from "./runtime/networking.js";
+import { storage } from "./runtime/storage.js";
+import { resetAnonymousId, resetSessionState } from "./runtime/session.js";
 
 // Type augmentation for the window.atribuTracker global
 interface AtribuTrackerGlobal {
