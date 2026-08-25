@@ -109,26 +109,33 @@ export interface AtribuConfig {
   sessionMode?: "inactivity_only" | "inactivity_or_source_change";
 
   /**
+   * Scroll depth, time on page, and a per-minute heartbeat.
+   * Defaults to `false` — these emit display-only `engagement` events that carry
+   * no attribution credit.
+   */
+  enableEngagement?: boolean;
+
+  /**
    * Track rage clicks (3+ rapid clicks) and dead clicks (no DOM response).
-   * Defaults to `true`.
+   * Defaults to `false`.
    */
   enableClickQuality?: boolean;
 
   /**
    * Capture Core Web Vitals (LCP, FCP, CLS, INP, TTFB) once per page load.
-   * Defaults to `true`.
+   * Defaults to `false`.
    */
   enableWebVitals?: boolean;
 
   /**
    * Auto-detect CTA buttons/links and track when they become visible.
-   * Defaults to `true`.
+   * Defaults to `false`.
    */
   enableCtaTracking?: boolean;
 
   /**
    * Auto-detect `<video>` elements and track play/pause/milestones.
-   * Defaults to `true`.
+   * Defaults to `false`.
    */
   enableVideoTracking?: boolean;
 }
@@ -271,6 +278,43 @@ export interface ImpressionOptions extends TrackOptions {
 }
 
 /** The Atribu tracker client returned by `init()`. */
+/**
+ * The identity + ad signal the tracker currently holds, flattened for handoff
+ * to a checkout (#109). Every field is optional — a fresh direct visit carries
+ * only `anonymous_id` + `session_id`.
+ */
+export interface TrackerAttribution {
+  anonymous_id?: string;
+  session_id?: string;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_content?: string;
+  utm_term?: string;
+  utm_id?: string;
+  fbclid?: string;
+  gclid?: string;
+  msclkid?: string;
+  ttclid?: string;
+  first_touch?: {
+    utm?: Record<string, string>;
+    click_ids?: Record<string, string>;
+    captured_at?: string;
+  };
+}
+
+/** Input for the confirmation-page `purchase()` event (#114). */
+export interface PurchaseInput {
+  /** Cash value of the sale. */
+  value?: number;
+  /** ISO currency code (e.g. "USD", "CLP"). */
+  currency?: string;
+  /** Your order / transaction id — the key that ties this to the payment. */
+  orderId?: string | number;
+  /** Any extra properties to attach to the event. */
+  [key: string]: unknown;
+}
+
 export interface AtribuClient {
   /** Track a custom event with optional properties. */
   track(
@@ -308,6 +352,13 @@ export interface AtribuClient {
     data?: Record<string, unknown>
   ): void;
 
+  /**
+   * Fire a confirmation-page `purchase` (#114). Same-device capture: the sale is
+   * recorded with its ad-click lineage so the payment provider's cash event can
+   * stitch to this session. Accepts `{ value, currency, orderId }` (+ extras).
+   */
+  purchase(input: PurchaseInput): void;
+
   /** Emit a periodic page-activity heartbeat event. */
   heartbeat(data?: Record<string, unknown>, options?: TrackOptions): void;
 
@@ -323,4 +374,18 @@ export interface AtribuClient {
 
   /** Clear visitor ID, session, and all stored state (e.g. on logout). */
   reset(): void;
+
+  /**
+   * The current identity + ad signal, for handing to a checkout so the payment
+   * ties to the exact ad. Synchronous — safe to call any time after `init()`.
+   */
+  getAttribution(): TrackerAttribution;
+
+  /**
+   * The same signal packed into one compact `atb1.` token for a hidden form
+   * field, a Stripe/MercadoPago `metadata` value, or a `client_reference_id`.
+   * Decode server-side with `parseAttributionToken` from
+   * `@atribu/analytics-enrichment/attribution-token`.
+   */
+  getAttributionToken(): string;
 }

@@ -9,6 +9,8 @@ import type {
   TrackOptions,
   SelfDescribingEventInput,
   ImpressionOptions,
+  TrackerAttribution,
+  PurchaseInput,
 } from "./types";
 
 // Import tracker runtime (bundled by tsup into this package)
@@ -43,11 +45,14 @@ interface AtribuTrackerGlobal {
     data?: Record<string, unknown>
   ): void;
   heartbeat(data?: Record<string, unknown>, options?: TrackOptions): void;
+  purchase(input: PurchaseInput): void;
   observeImpression(
     target: string | Element,
     data?: Record<string, unknown>,
     options?: ImpressionOptions
   ): () => void;
+  getAttribution(): TrackerAttribution;
+  getAttributionToken(): string;
   _buildEvent(
     eventName: string,
     data?: Record<string, unknown>,
@@ -166,12 +171,24 @@ export function createClient(): AtribuClient {
       window.atribuTracker?.heartbeat(data, options);
     },
 
+    purchase(input: PurchaseInput) {
+      window.atribuTracker?.purchase(input);
+    },
+
     observeImpression(
       target: string | Element,
       data?: Record<string, unknown>,
       options?: ImpressionOptions
     ) {
       return window.atribuTracker?.observeImpression(target, data, options) ?? (() => {});
+    },
+
+    getAttribution() {
+      return window.atribuTracker?.getAttribution() ?? {};
+    },
+
+    getAttributionToken() {
+      return window.atribuTracker?.getAttributionToken() ?? "";
     },
 
     flush() {

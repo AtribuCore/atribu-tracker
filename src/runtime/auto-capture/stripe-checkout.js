@@ -6,6 +6,39 @@
 // event so the backend can stitch the payment to the browser session.
 // ---------------------------------------------------------------------------
 
+import { anonymousId } from "../session.js";
+import { isStripePaymentLink, buildDecoratedUrl } from "./stripe-link.js";
+
+// #111 — stamp the visitor's anonymous_id onto Stripe Payment Link URLs on the
+// page (via client_reference_id) so a payment through them gets a deterministic
+// ad link with zero config from the customer. The webhook (#110) reads
+// client_reference_id back. Pure host/param logic lives in ./stripe-link.js.
+export function initStripePaymentLinkDecoration() {
+  try {
+    var base = window.location.href;
+    // Decorate anchors already in the DOM at load.
+    var anchors = document.querySelectorAll('a[href*="buy.stripe.com"]');
+    for (var i = 0; i < anchors.length; i++) {
+      if (isStripePaymentLink(anchors[i].href, base)) {
+        anchors[i].href = buildDecoratedUrl(anchors[i].href, base, anonymousId);
+      }
+    }
+    // Just-in-time for SPA / dynamically-inserted buttons: rewrite the anchor's
+    // href in the capture phase, before the browser navigates.
+    document.addEventListener(
+      "click",
+      function (e) {
+        var el = e.target;
+        while (el && el.nodeName !== "A") el = el.parentElement;
+        if (el && el.href && isStripePaymentLink(el.href, window.location.href)) {
+          el.href = buildDecoratedUrl(el.href, window.location.href, anonymousId);
+        }
+      },
+      true
+    );
+  } catch (_) {}
+}
+
 export function initStripeCheckoutCapture() {
   try {
     var params = new URLSearchParams(window.location.search);

@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.4.0 (2026-08-25)
+
+### Features
+
+- **Endpoint failover** — when a first-party tracking domain (CNAME) dies, delivery fails over to the canonical `www.atribu.app` collect endpoint after 3 consecutive network-level failures and a successful reachability probe; session-scoped, self-heals on next page load. Offline never triggers it.
+- **GTM single-tag install** — the tracking key can ride the loader script's `src` query (`?key=`, `?endpoint=`), surviving GTM Custom HTML's `data-*` stripping. Window var still wins.
+- **`whatsapp_click` / `contact_click` capture** — wa.me / api.whatsapp.com / web.whatsapp.com / `whatsapp://` clicks emit `whatsapp_click` (merchant phone + prefill text); `tel:` / `mailto:` emit `contact_click`. Both suppress the generic `outbound_link_click` duplicate.
+- **Referrer-only first touch** — an organic first visit with an external referrer but no URL params now persists `{referrer, landing_page, capturedAt}` as first touch (first-write-wins; carried in the `atb1.` attribution token).
+- **Broadened click-ID capture** — adds `rdt_cid`, `sccid`, `epik`, `dclid`, `qclid`, `irclid`.
+- **`_ga` identity signal** — GA4 client id (and `_ga_*` session id) captured alongside `_fbp`/`_fbc` as a read-only identity signal.
+- **Early identity capture** — phone/email captured at input blur (pre-submit) to a dedicated endpoint; per-profile server-side kill switch plus `window.ATRIBU_DISABLE_EARLY_IDENTITY`.
+- **Install verification** — `?atb_verify=<nonce>` beacons install proof and is stripped before any stored touch/UTM context.
+
+
+## 0.3.0 (2026-07-15)
+
+### Features
+
+- `purchase({ value, currency, orderId })` — fire a confirmation/thank-you page purchase. Same-device capture: the sale is recorded with its ad-click lineage so the payment provider's cash event stitches to that session (a backstop for when the provider can't carry the attribution token). Also queueable pre-init via the loader stub.
+
+## 0.2.0 (2026-07-15)
+
+### Features
+
+- `getAttribution()` / `getAttributionToken()` — read the visitor's current identity + ad signal (anonymous_id, session_id, UTMs, click IDs, first touch) and hand it to a checkout so the payment ties to the exact ad instead of relying on an email match. The token is a compact `atb1.` string for a hidden form field, a Stripe/MercadoPago `metadata` value, or a `client_reference_id`; decode it server-side with `parseAttributionToken` from `@atribu/analytics-enrichment/attribution-token`.
+- `ready(cb)` / `getAttributionAsync()` — read attribution before the tracker finishes loading (queue `["ready", cb]` on the loader stub) or as a promise after init.
+
 ## 0.1.3 (2026-05-15)
 
 ### Internal

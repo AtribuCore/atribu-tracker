@@ -22,5 +22,8 @@ export function createNoopClient(): AtribuClient {
     observeImpression: noopCleanup,
     flush: noop,
     reset: noop,
+    purchase: noop,
+    getAttribution: () => ({}),
+    getAttributionToken: () => "",
   };
 }

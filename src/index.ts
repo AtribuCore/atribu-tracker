@@ -16,6 +16,8 @@ import type {
   ConsentPayload,
   SelfDescribingEventInput,
   ImpressionOptions,
+  TrackerAttribution,
+  PurchaseInput,
 } from "./types";
 import { createNoopClient } from "./noop";
 
@@ -33,6 +35,8 @@ export type {
   ContextEntity,
   SelfDescribingEventInput,
   ImpressionOptions,
+  TrackerAttribution,
+  PurchaseInput,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -142,6 +146,9 @@ export function init(config: AtribuConfig): AtribuClient {
   ) {
     w.ATRIBU_SESSION_MODE = config.sessionMode;
   }
+  if (config.enableEngagement !== undefined) {
+    w.ATRIBU_ENABLE_ENGAGEMENT = config.enableEngagement;
+  }
   if (config.enableClickQuality !== undefined) {
     w.ATRIBU_ENABLE_CLICK_QUALITY = config.enableClickQuality;
   }
@@ -233,6 +240,14 @@ export function heartbeat(
   getTracker().heartbeat(data, options);
 }
 
+/**
+ * Fire a confirmation-page `purchase` (#114) — same-device capture so the
+ * payment provider's cash event stitches to this session. Requires `init()`.
+ */
+export function purchase(input: PurchaseInput): void {
+  getTracker().purchase(input);
+}
+
 /** Observe an element and emit a one-time impression when visible. */
 export function observeImpression(
   target: string | Element,
@@ -250,4 +265,22 @@ export function flush(): void {
 /** Clear visitor/session state (e.g. on logout). Requires `init()` to have been called. */
 export function reset(): void {
   getTracker().reset();
+}
+
+/**
+ * The current identity + ad signal, for handing to a checkout (#109).
+ * Requires `init()` to have been called.
+ */
+export function getAttribution(): TrackerAttribution {
+  return getTracker().getAttribution();
+}
+
+/**
+ * The same signal as one compact `atb1.` token for a hidden field / Stripe
+ * `metadata` / `client_reference_id`. Decode server-side with
+ * `parseAttributionToken` from `@atribu/analytics-enrichment/attribution-token`.
+ * Requires `init()` to have been called.
+ */
+export function getAttributionToken(): string {
+  return getTracker().getAttributionToken();
 }

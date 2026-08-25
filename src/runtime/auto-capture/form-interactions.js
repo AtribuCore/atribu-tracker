@@ -7,8 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import { getSessionId } from "../session.js";
-import { getEndpoint } from "../config.js";
-import { createDispatchPayload } from "../networking.js";
+import { activeEndpoint, createDispatchPayload } from "../networking.js";
 
 var FORM_FIELD_TAGS = { INPUT: 1, SELECT: 1, TEXTAREA: 1 };
 var IGNORE_INPUT_TYPES = { hidden: 1, submit: 1, button: 1, reset: 1, image: 1 };
@@ -187,7 +186,7 @@ function sendAbandonmentBeacon() {
           var body = JSON.stringify(dispatchPayload);
           if (body.length < 60 * 1024) {
             var blob = new Blob([body], { type: "application/json" });
-            navigator.sendBeacon(getEndpoint(), blob);
+            navigator.sendBeacon(activeEndpoint(), blob);
           }
         }
       }

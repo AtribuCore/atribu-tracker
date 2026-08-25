@@ -8,8 +8,9 @@ import {
   touchContext,
   collectUtmFromLocation,
   collectClickIdsFromLocation,
+  stripVerifyParam,
 } from "./utm.js";
-import { getFbp, getFbc } from "./cookies.js";
+import { getFbp, getFbc, getGaClientId, getGaSessionId } from "./cookies.js";
 import { getConsent } from "./consent.js";
 import { post } from "./networking.js";
 import { shouldSuppressEvent, getAiAgentPayload } from "./filtering.js";
@@ -82,6 +83,8 @@ var DEFAULT_EVENT_SCHEMAS = {
   closed_won: "atribu.closed_won",
   engagement: "atribu.engagement",
   file_download: "atribu.file_download",
+  whatsapp_click: "atribu.whatsapp_click",
+  contact_click: "atribu.contact_click",
   custom_event: "atribu.custom_event",
 };
 
@@ -111,8 +114,13 @@ export function buildTrackingEvent(eventName, data, options) {
   var context = touchContext();
   var fbp = getFbp();
   var fbc = getFbc();
+  var gaClientId = getGaClientId();
+  var gaSessionId = getGaSessionId();
   var consent = getConsent();
-  var pageUrl = safeUrl(window.location.href);
+  // #410 — atb_verify (the install-verification nonce) is our own plumbing,
+  // never a marketing/attribution signal. Strip it before it becomes
+  // events_enriched.page_url / sessions.entry_page / touches.landing_page_path.
+  var pageUrl = safeUrl(stripVerifyParam(window.location.href));
   var path = window.location.pathname;
   var host = window.location.hostname;
   var nowIso = new Date().toISOString();
@@ -189,6 +197,8 @@ export function buildTrackingEvent(eventName, data, options) {
       : undefined,
     fbp: fbp || undefined,
     fbc: fbc || undefined,
+    gaClientId: gaClientId || undefined,
+    gaSessionId: gaSessionId || undefined,
     consent: consent || undefined,
     sourcePlatform:
       options &&

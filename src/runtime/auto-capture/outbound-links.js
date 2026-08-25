@@ -2,14 +2,23 @@
 // Outbound/exit-link capture: outbound_link_click on external links
 // ---------------------------------------------------------------------------
 
-import { KEEPALIVE_BYTES_LIMIT, getEndpoint, getTrackingKey } from "../config.js";
+import { KEEPALIVE_BYTES_LIMIT, getTrackingKey } from "../config.js";
 import { buildTrackingEvent } from "../track.js";
-import { createDispatchPayload, post } from "../networking.js";
+import { activeEndpoint, createDispatchPayload, post } from "../networking.js";
+import { isWhatsAppUrl } from "./whatsapp-target.js";
 
 function isExternalLink(anchor) {
   try {
     if (!anchor || !anchor.href) return false;
     if (anchor.hasAttribute("download")) return false;
+    // #403 — a wa.me / api.whatsapp.com / web.whatsapp.com link is captured by
+    // `whatsapp-links.js` as a `whatsapp_click` with the merchant phone and
+    // prefill parsed out. Suppress the generic twin here so one click stays one
+    // event. Done structurally rather than by listener ordering: both modules
+    // register capture-phase listeners on `document`, so "whoever ran first
+    // marks the click" would silently invert the day someone reorders
+    // `initRuntime`.
+    if (isWhatsAppUrl(anchor.href, window.location.origin)) return false;
     var linkUrl = new URL(anchor.href, window.location.origin);
     if (linkUrl.protocol !== "http:" && linkUrl.protocol !== "https:")
       return false;
@@ -75,7 +84,7 @@ function dispatchOutboundLinkClick(anchor) {
       var body = JSON.stringify(beaconPayload);
       if (body.length < KEEPALIVE_BYTES_LIMIT) {
         var blob = new Blob([body], { type: "application/json" });
-        navigator.sendBeacon(getEndpoint(), blob);
+        navigator.sendBeacon(activeEndpoint(), blob);
         return;
       }
     }

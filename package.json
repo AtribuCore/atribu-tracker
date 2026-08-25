@@ -1,6 +1,6 @@
 {
   "name": "@atribu/tracker",
-  "version": "0.1.3",
+  "version": "0.4.0",
   "description": "Official Atribu tracking SDK — marketing attribution that shows which ads drive revenue",
   "type": "module",
   "main": "./dist/index.cjs",

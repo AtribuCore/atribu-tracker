@@ -22,17 +22,21 @@ import { initFormCapture } from "./auto-capture/forms.js";
 import { initBookingCapture } from "./auto-capture/bookings.js";
 import { initSpaCapture } from "./auto-capture/spa.js";
 import { initOutboundLinkCapture } from "./auto-capture/outbound-links.js";
+import { initWhatsAppLinkCapture } from "./auto-capture/whatsapp-links.js";
+import { initContactLinkCapture } from "./auto-capture/contact-links.js";
 import { initFileDownloadCapture } from "./auto-capture/file-downloads.js";
 import { initTaggedEventCapture } from "./auto-capture/tagged-events.js";
-import { initStripeCheckoutCapture } from "./auto-capture/stripe-checkout.js";
+import { initStripeCheckoutCapture, initStripePaymentLinkDecoration } from "./auto-capture/stripe-checkout.js";
 import { initGhlFormCapture } from "./auto-capture/ghl-forms.js";
 import { initFormInteractionCapture } from "./auto-capture/form-interactions.js";
+import { initEarlyIdentityCapture } from "./auto-capture/early-identity.js";
 import { initClickQualityCapture } from "./auto-capture/click-quality.js";
 import { initWebVitalsCapture } from "./auto-capture/web-vitals.js";
 import { initCtaVisibilityCapture } from "./auto-capture/cta-visibility.js";
 import { initVideoCapture } from "./auto-capture/video.js";
 import { initErrorCapture } from "./auto-capture/errors.js";
 import { initIdentitySync } from "./identity-sync.js";
+import { initInstallVerifyBeacon } from "./auto-capture/install-verify.js";
 
 // ---------------------------------------------------------------------------
 // initRuntime — the full tracker bootstrap
@@ -146,22 +150,27 @@ export function initRuntime() {
   // bfcache restoration listener (fires page_view when page restored)
   initBfcacheListener();
 
-  // Init engagement tracking (scroll depth + time on page)
-  initEngagement();
+  // Engagement (scroll depth + time on page) and its heartbeat are OPT-IN. They
+  // emit `engagement` events, which are display-only: they never become
+  // conversions and now carry no attribution credit (ADR 0003). The heartbeat
+  // alone was one event per visible minute per visitor.
+  if (window.ATRIBU_ENABLE_ENGAGEMENT === true) {
+    initEngagement();
 
-  var heartbeatSeconds =
-    typeof window.ATRIBU_HEARTBEAT_INTERVAL_SECONDS === "number"
-      ? window.ATRIBU_HEARTBEAT_INTERVAL_SECONDS
-      : window.ATRIBU_HEARTBEAT_INTERVAL_SECONDS === false
-        ? 0
-        : 60;
-  if (heartbeatSeconds > 0) {
-    window.setInterval(function () {
-      if (document.visibilityState !== "visible") return;
-      var heartbeatEvent = emitEngagementEvent("heartbeat");
-      if (!heartbeatEvent) return;
-      post(heartbeatEvent);
-    }, Math.max(heartbeatSeconds, 5) * 1000);
+    var heartbeatSeconds =
+      typeof window.ATRIBU_HEARTBEAT_INTERVAL_SECONDS === "number"
+        ? window.ATRIBU_HEARTBEAT_INTERVAL_SECONDS
+        : window.ATRIBU_HEARTBEAT_INTERVAL_SECONDS === false
+          ? 0
+          : 60;
+    if (heartbeatSeconds > 0) {
+      window.setInterval(function () {
+        if (document.visibilityState !== "visible") return;
+        var heartbeatEvent = emitEngagementEvent("heartbeat");
+        if (!heartbeatEvent) return;
+        post(heartbeatEvent);
+      }, Math.max(heartbeatSeconds, 5) * 1000);
+    }
   }
 
   // Init Meta Pixel bridge
@@ -173,24 +182,37 @@ export function initRuntime() {
   initBookingCapture();
   initSpaCapture();
   initOutboundLinkCapture();
+  initWhatsAppLinkCapture();
+  initContactLinkCapture();
   initFileDownloadCapture();
   initTaggedEventCapture();
   initStripeCheckoutCapture();
+  initStripePaymentLinkDecoration();
   initFormInteractionCapture();
   initIdentitySync();
   initErrorCapture();
+  // #413 — early identity capture (phone/email at input blur, pre-submit).
+  // Always-on by default; client-side kill switch is checked inside the
+  // module itself (window.ATRIBU_DISABLE_EARLY_IDENTITY). The server-side
+  // per-profile kill switch is enforced by the endpoint, not here.
+  initEarlyIdentityCapture();
+  initInstallVerifyBeacon();
 
-  // Init opt-in features (enabled by default, disable via config flags)
-  if (window.ATRIBU_ENABLE_CLICK_QUALITY !== false) {
+  // Web-analytics capture modules. These are now OPT-IN (they used to default on).
+  // They fed /pages-engagement, the engagement dashboard boards and the
+  // engagement_weighted attribution model — all deleted (ADR 0003, ADR 0009).
+  // Leaving them on would keep paying the ingestion cost for data nothing reads.
+  // Set the flag to exactly `true` to re-enable one.
+  if (window.ATRIBU_ENABLE_CLICK_QUALITY === true) {
     initClickQualityCapture();
   }
-  if (window.ATRIBU_ENABLE_WEB_VITALS !== false) {
+  if (window.ATRIBU_ENABLE_WEB_VITALS === true) {
     initWebVitalsCapture();
   }
-  if (window.ATRIBU_ENABLE_CTA_TRACKING !== false) {
+  if (window.ATRIBU_ENABLE_CTA_TRACKING === true) {
     initCtaVisibilityCapture();
   }
-  if (window.ATRIBU_ENABLE_VIDEO_TRACKING !== false) {
+  if (window.ATRIBU_ENABLE_VIDEO_TRACKING === true) {
     initVideoCapture();
   }
 
@@ -211,6 +233,13 @@ export function initRuntime() {
         window.atribuTracker.setConsent(args[1]);
       } else if (method === "trackRevenue" && typeof args[1] === "string") {
         window.atribuTracker.trackRevenue(args[1], args[2], args[3], args[4]);
+      } else if (method === "purchase") {
+        // #114 — a confirmation-page purchase queued before the tracker loaded.
+        window.atribuTracker.purchase(args[1]);
+      } else if (method === "ready" && typeof args[1] === "function") {
+        // #109 — pre-init readers: cb receives the now-live tracker so it can
+        // call getAttribution()/getAttributionToken() synchronously inside it.
+        args[1](window.atribuTracker);
       }
     }
     delete window.atribuTracker.q;

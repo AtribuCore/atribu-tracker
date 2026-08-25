@@ -37,7 +37,46 @@ export function collectClickIdsFromLocation() {
     // metadata; it is not used for identity stitching itself.
     igsid: params.get("igsid") || undefined,
     ig_media_id: params.get("ig_media_id") || undefined,
+    // #409 — broadened long tail. classify_default_channel() maps these to
+    // Paid Social (rdt_cid/sccid/epik) or Display (dclid); qclid/irclid ride
+    // through generically (captured + tokenized, no channel-name mapping).
+    rdt_cid: params.get("rdt_cid") || undefined, // Reddit
+    sccid: params.get("sccid") || undefined, // Snapchat
+    epik: params.get("epik") || undefined, // Pinterest
+    dclid: params.get("dclid") || undefined, // Google Display/DV360
+    qclid: params.get("qclid") || undefined, // Quora
+    irclid: params.get("irclid") || undefined, // Impact
   };
+}
+
+// #410 — the install-verification beacon appends ?atb_verify=<nonce> to
+// whatever page the merchant opens to prove the tracker is installed. It is
+// our own plumbing, not a marketing signal, and must never reach stored
+// touch/UTM context. collectUtmFromLocation()/collectClickIdsFromLocation()
+// above only ever read specific known param names so they're already immune;
+// this is the one place a raw location.href gets persisted verbatim.
+export function stripVerifyParam(href) {
+  try {
+    var url = new URL(href);
+    if (!url.searchParams.has("atb_verify")) return href;
+    url.searchParams.delete("atb_verify");
+    return url.toString();
+  } catch (_) {
+    return href;
+  }
+}
+
+// True when `referrer` names a different host than the current page — a
+// same-site referrer (e.g. a click from one page of the tracked site to
+// another) is not a marketing signal.
+function isExternalReferrer(referrer) {
+  if (!referrer) return false;
+  try {
+    var refHost = new URL(referrer).hostname;
+    return !!refHost && refHost !== window.location.hostname;
+  } catch (_) {
+    return false;
+  }
 }
 
 function mergeTouch(existing, incoming) {
@@ -76,6 +115,21 @@ export function touchContext() {
 
   if (!firstTouch && urlHasTracking) {
     firstTouch = mergeTouch(null, fromUrl);
+    writeJson(FIRST_TOUCH_KEY, firstTouch);
+  } else if (!firstTouch && isExternalReferrer(document.referrer)) {
+    // Organic first visit — no UTMs/click IDs on the URL, but a real
+    // external referrer (Instagram bio link, Google organic, a bare share
+    // link, …). Persist referrer + landing page as first touch so
+    // getAttribution()/the token still carries a first-touch signal for
+    // off-site conversion paths (#406). Never fabricate UTM values from the
+    // referrer — channel classification happens server-side.
+    // First-write-wins, same as the UTM branch above: a later paid visit
+    // must not overwrite this.
+    firstTouch = {
+      referrer: document.referrer,
+      landing_page: stripVerifyParam(window.location.href),
+      capturedAt: new Date().toISOString(),
+    };
     writeJson(FIRST_TOUCH_KEY, firstTouch);
   }
 

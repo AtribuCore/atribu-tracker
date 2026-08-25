@@ -4,6 +4,7 @@
 
 import {
   getEndpoint,
+  getFallbackEndpoint,
   getTrackingKey,
   OUTBOX_KEY,
   OUTBOX_MAX_ITEMS,
@@ -11,7 +12,15 @@ import {
   OUTBOX_MAX_RETRIES,
   OUTBOX_MAX_RETRY_DELAY_MS,
   KEEPALIVE_BYTES_LIMIT,
+  FAILOVER_THRESHOLD,
+  FAILOVER_PROBE_COOLDOWN_MS,
 } from "./config.js";
+import {
+  createFailoverState,
+  recordPrimaryAttempt,
+  shouldProbeFailover,
+  decideFailover,
+} from "./failover.js";
 import { genId } from "./util.js";
 import { storage } from "./storage.js";
 
@@ -26,6 +35,79 @@ export var outbox = [];
 var outboxFlushTimer = null;
 var outboxFlushing = false;
 var flushEpoch = 0;
+
+// ---------------------------------------------------------------------------
+// Endpoint failover (#415)
+//
+// Session-scoped, in-memory only — never persisted (localStorage/
+// sessionStorage) and never sent through the outbox's own JSON. A page
+// reload gives the tracker a fresh module instance, which is exactly the
+// re-probe policy: the primary is retried automatically on the next page
+// load, with no background timer needed to "come back" to it. Within one
+// page's lifetime a failover latches for the rest of that session — the
+// design explicitly rejects flapping back and forth on partial recovery.
+// ---------------------------------------------------------------------------
+
+var failoverState = createFailoverState();
+var failoverProbeInFlight = false;
+var failoverLastProbeAt = 0;
+
+// Which endpoint a send should target right now.
+export function activeEndpoint() {
+  if (failoverState.active) {
+    var fallback = getFallbackEndpoint();
+    if (fallback) return fallback;
+  }
+  return getEndpoint();
+}
+
+function runFailoverProbe() {
+  if (failoverProbeInFlight) return;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+  var fallback = getFallbackEndpoint();
+  if (!fallback || typeof fetch !== "function") return;
+  var now = Date.now();
+  if (now - failoverLastProbeAt < FAILOVER_PROBE_COOLDOWN_MS) return;
+  failoverLastProbeAt = now;
+  failoverProbeInFlight = true;
+
+  // A bare OPTIONS is the cheapest true reachability check: the collect
+  // route answers it unconditionally (no tracking-key lookup, no DB work),
+  // so a response — any response — proves DNS + TLS + the app are all up on
+  // the fallback origin, without shipping a real event during the probe.
+  fetch(fallback, { method: "OPTIONS" })
+    .then(function () {
+      return true;
+    })
+    .catch(function () {
+      return false;
+    })
+    .then(function (reachable) {
+      failoverProbeInFlight = false;
+      var isOnline =
+        typeof navigator !== "undefined" ? navigator.onLine : true;
+      if (decideFailover(isOnline, reachable)) {
+        failoverState.active = true;
+        failoverState.consecutiveFailures = 0;
+      } else {
+        // Stay on the primary, but leave the counter at the threshold so
+        // the very next failure re-probes instead of waiting for N more.
+        failoverState.consecutiveFailures = FAILOVER_THRESHOLD;
+      }
+    });
+}
+
+// Feed the outcome of a primary-endpoint delivery attempt into the failover
+// decision. A no-op once already failed over, or when no fallback is
+// configured (most sites: nothing to fail over to).
+function noteDeliveryOutcome(result) {
+  if (failoverState.active) return;
+  if (!getFallbackEndpoint()) return;
+  recordPrimaryAttempt(failoverState, result.status === 0);
+  if (shouldProbeFailover(failoverState, FAILOVER_THRESHOLD)) {
+    runFailoverProbe();
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Outbox persistence
@@ -155,7 +237,7 @@ function sendWithFetch(payload, keepalive) {
     return Promise.resolve({ ok: false, status: 0 });
   }
   var body = JSON.stringify(payload);
-  return fetch(getEndpoint(), {
+  return fetch(activeEndpoint(), {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -180,7 +262,7 @@ function sendWithXhr(payload) {
     }
     try {
       var xhr = new XMLHttpRequest();
-      xhr.open("POST", getEndpoint(), true);
+      xhr.open("POST", activeEndpoint(), true);
       xhr.setRequestHeader("content-type", "application/json");
       xhr.setRequestHeader("x-atribu-tracking-key", getTrackingKey());
       xhr.onreadystatechange = function () {
@@ -258,6 +340,7 @@ function flushOutbox() {
 
     sendEventPayload(item.payload, false)
       .then(function (result) {
+        noteDeliveryOutcome(result);
         if (result.ok) {
           invokeCallback(item.id, null);
           outbox.splice(index, 1);
@@ -278,6 +361,7 @@ function flushOutbox() {
         next();
       })
       .catch(function () {
+        noteDeliveryOutcome({ ok: false, status: 0 });
         var attempts = (item.attempts || 0) + 1;
         item.attempts = attempts;
         if (attempts > OUTBOX_MAX_RETRIES) {
@@ -318,7 +402,7 @@ export function flushOutboxWithBeacon() {
         continue;
       }
       var beaconBody = new Blob([body], { type: "application/json" });
-      var ok = navigator.sendBeacon(getEndpoint(), beaconBody);
+      var ok = navigator.sendBeacon(activeEndpoint(), beaconBody);
       if (!ok) nextQueue.push(item);
     } catch (_) {
       nextQueue.push(item);

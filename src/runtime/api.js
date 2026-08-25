@@ -8,6 +8,7 @@ import { rotatePageViewId, resetAnonymousId, resetSessionState } from "./session
 import { broadcastIdentify } from "./identity-sync.js";
 import { patchRecentOutboxEvent, resetOutbox } from "./networking.js";
 import { storage } from "./storage.js";
+import { getAttribution, getAttributionToken } from "./attribution.js";
 
 var STORAGE_KEYS = [
   "atribu_session_id",
@@ -116,6 +117,47 @@ window.atribuTracker = {
     );
   },
 
+  // #114 — confirmation/thank-you page purchase. Fires on the same device with
+  // the live anonymous_id/session_id, so the sale is captured with its ad-click
+  // lineage and the payment provider's cash event can stitch to that session
+  // (the same-device backstop for when the provider can't carry the token).
+  // Accepts { value, currency, orderId } (aliases: valueAmount, order_id).
+  purchase: function (data) {
+    var input = data || {};
+    var value =
+      typeof input.value === "number"
+        ? input.value
+        : typeof input.valueAmount === "number"
+          ? input.valueAmount
+          : undefined;
+    var orderId =
+      input.orderId != null
+        ? input.orderId
+        : input.order_id != null
+          ? input.order_id
+          : input.transactionId != null
+            ? input.transactionId
+            : undefined;
+    var extra = Object.assign({}, input);
+    delete extra.value;
+    delete extra.valueAmount;
+    delete extra.currency;
+    delete extra.orderId;
+    delete extra.order_id;
+    delete extra.transactionId;
+    return track(
+      "purchase",
+      Object.assign(extra, {
+        valueAmount: value,
+        currency:
+          typeof input.currency === "string"
+            ? input.currency.trim().toUpperCase()
+            : undefined,
+        order_id: orderId != null ? String(orderId) : undefined,
+      })
+    );
+  },
+
   heartbeat: function (data, options) {
     var payload = Object.assign({}, data && data.payload ? data.payload : {}, data || {});
     delete payload.payload;
@@ -188,6 +230,27 @@ window.atribuTracker = {
     return function () {
       observer.disconnect();
     };
+  },
+
+  // #109 — hand the current identity + ad signal to a checkout.
+  // getAttribution() returns the fields object; getAttributionToken() a single
+  // compact string for a hidden field / Stripe `metadata` / client_reference_id.
+  getAttribution: getAttribution,
+  getAttributionToken: getAttributionToken,
+
+  // Pre-init async form. By the time this method exists the tracker has loaded,
+  // so `cb` fires on the next tick. Callers that must read attribution before
+  // the bundle loads queue it on the stub instead — `atribuTracker.q.push(
+  // ["ready", cb])` — which the runtime drain calls with the live tracker.
+  ready: function (cb) {
+    if (typeof cb === "function") {
+      setTimeout(function () {
+        cb(window.atribuTracker);
+      }, 0);
+    }
+  },
+  getAttributionAsync: function () {
+    return Promise.resolve(getAttribution());
   },
 
   // Internal: used by engagement beacon (not part of public contract)

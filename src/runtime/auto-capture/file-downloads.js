@@ -2,9 +2,9 @@
 // Auto-capture: file download clicks → file_download
 // ---------------------------------------------------------------------------
 
-import { KEEPALIVE_BYTES_LIMIT, getEndpoint, getTrackingKey } from "../config.js";
+import { KEEPALIVE_BYTES_LIMIT, getTrackingKey } from "../config.js";
 import { buildTrackingEvent } from "../track.js";
-import { createDispatchPayload, post } from "../networking.js";
+import { activeEndpoint, createDispatchPayload, post } from "../networking.js";
 
 var DOWNLOAD_EXTENSIONS =
   /\.(pdf|xlsx?|docx?|csv|pptx?|zip|rar|gz|7z|exe|dmg|iso|pkg|mp4|mp3|wav|avi|mov|mpeg|wmv|flv|midi|wma|rtf|txt|key|pps|numbers|pages|odt|ods|odp|eps)$/i;
@@ -78,7 +78,7 @@ function dispatchFileDownload(anchor) {
         var body = JSON.stringify(beaconPayload);
         if (body.length < KEEPALIVE_BYTES_LIMIT) {
           var blob = new Blob([body], { type: "application/json" });
-          navigator.sendBeacon(getEndpoint(), blob);
+          navigator.sendBeacon(activeEndpoint(), blob);
           return;
         }
       }
